@@ -1,0 +1,90 @@
+#kubectl config set-credentials drogo --client-key=/root/drogo.key --client-certificate=/root/drogo.crt
+#kubectl config set-context developer --user=drogo  --cluster=kubernetes
+#kubectl config use-context developer
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+   name: development
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jekyll-site
+  namespace: development
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeName: jekyll-site
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jekyll
+  namespace: development
+  labels:
+    app: jekyll
+    run: jekyll
+spec:
+  initContainers:
+    - name: copy-jekyll-site
+      image: kodekloud/jekyll
+      command: [ "jekyll", "new", "/site" ]
+      volumeMounts:
+        - mountPath: /site
+          name: site
+  containers:
+    - name: jekyll
+      image: kodekloud/jekyll-serve
+      volumeMounts:
+        - mountPath: /site
+          name: site
+  volumes:
+    - name: site
+      persistentVolumeClaim:
+        claimName: jekyll-site
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jekyll
+  namespace: development
+spec:
+  type: NodePort
+  selector:
+    run: jekyll
+  ports:
+    - protocol: TCP
+      nodePort: 30097
+      targetPort: 4000
+      port: 8080
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer-role
+  namespace: development
+rules:
+- apiGroups: [""]
+  resources: ["services", "pods", "persistentvolumeclaims"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-rolebinding
+  namespace: development
+subjects:
+- kind: User
+  name: drogo
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer-role
+  apiGroup: rbac.authorization.k8s.io
+---
